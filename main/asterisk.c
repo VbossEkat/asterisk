@@ -1,7 +1,7 @@
 /*
  * Asterisk -- An open source telephony toolkit.
  *
- * Copyright (C) 1999 - 2015, Digium, Inc.
+ * Copyright (C) 1999 - 2016, Digium, Inc.
  *
  * Mark Spencer <markster@digium.com>
  *
@@ -53,7 +53,7 @@
  *
  * \section copyright Copyright and Author
  *
- * Copyright (C) 1999 - 2015, Digium, Inc.
+ * Copyright (C) 1999 - 2016, Digium, Inc.
  * Asterisk is a <a href="http://www.digium.com/en/company/view-policy.php?id=Trademark-Policy">registered trademark</a>
  * of <a rel="nofollow" href="http://www.digium.com">Digium, Inc</a>.
  *
@@ -302,7 +302,7 @@ int daemon(int, int);  /* defined in libresolv of all places */
 
 /*! \brief Welcome message when starting a CLI interface */
 #define WELCOME_MESSAGE \
-    ast_verbose("Asterisk %s, Copyright (C) 1999 - 2015, Digium, Inc. and others.\n" \
+    ast_verbose("Asterisk %s, Copyright (C) 1999 - 2016, Digium, Inc. and others.\n" \
                 "Created by Mark Spencer <markster@digium.com>\n" \
                 "Asterisk comes with ABSOLUTELY NO WARRANTY; type 'core show warranty' for details.\n" \
                 "This is free software, with components licensed under the GNU General Public\n" \
@@ -2708,11 +2708,12 @@ static int ast_el_read_char(EditLine *editline, char *cp)
 
 			console_print(buf, 0);
 
-			if ((res < EL_BUF_SIZE - 1) && ((buf[res-1] == '\n') || (buf[res-2] == '\n'))) {
+			if ((res < EL_BUF_SIZE - 1) && ((buf[res-1] == '\n') || (res >= 2 && buf[res-2] == '\n'))) {
 				*cp = CC_REFRESH;
 				return(1);
-			} else
+			} else {
 				lastpos = 1;
+			}
 		}
 	}
 
@@ -3365,7 +3366,7 @@ static int show_version(void)
 
 static int show_cli_help(void)
 {
-	printf("Asterisk %s, Copyright (C) 1999 - 2015, Digium, Inc. and others.\n", ast_get_version());
+	printf("Asterisk %s, Copyright (C) 1999 - 2016, Digium, Inc. and others.\n", ast_get_version());
 	printf("Usage: asterisk [OPTIONS]\n");
 	printf("Valid Options:\n");
 	printf("   -V              Display version number and exit\n");
@@ -4592,6 +4593,36 @@ static void asterisk_daemon(int isroot, const char *runuser, const char *rungrou
 
 	if (load_pbx()) {
 		printf("Failed: load_pbx\n%s", term_quit());
+		exit(1);
+	}
+
+	if (load_pbx_builtins()) {
+		printf("Failed: load_pbx_builtins\n%s", term_quit());
+		exit(1);
+	}
+
+	if (load_pbx_functions_cli()) {
+		printf("Failed: load_pbx_functions_cli\n%s", term_quit());
+		exit(1);
+	}
+
+	if (load_pbx_variables()) {
+		printf("Failed: load_pbx_variables\n%s", term_quit());
+		exit(1);
+	}
+
+	if (load_pbx_switch()) {
+		printf("Failed: load_pbx_switch\n%s", term_quit());
+		exit(1);
+	}
+
+	if (load_pbx_app()) {
+		printf("Failed: load_pbx_app\n%s", term_quit());
+		exit(1);
+	}
+
+	if (load_pbx_hangup_handler()) {
+		printf("Failed: load_pbx_hangup_handler\n%s", term_quit());
 		exit(1);
 	}
 

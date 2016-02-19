@@ -580,6 +580,10 @@
 /* Define if your system has the PJPROJECT libraries. */
 #undef HAVE_PJPROJECT
 
+/* Define to 1 if PJPROJECT has the PJSIP Dialog Create UAS with Incremented
+   Lock feature. */
+#undef HAVE_PJSIP_DLG_CREATE_UAS_AND_INC_LOCK
+
 /* Define to 1 if PJPROJECT has the PJSIP External Resolver Support feature.
    */
 #undef HAVE_PJSIP_EXTERNAL_RESOLVER
@@ -831,6 +835,12 @@
 
 /* Define to 1 if you have the ISDN SS7 library. */
 #undef HAVE_SS7
+
+/* Define if your system has the SSL_OP_NO_TLSV1_1 headers. */
+#undef HAVE_SSL_OP_NO_TLSV1_1
+
+/* Define if your system has the SSL_OP_NO_TLSV1_2 headers. */
+#undef HAVE_SSL_OP_NO_TLSV1_2
 
 /* Define to 1 if `stat' has the bug that it succeeds when given the
    zero-length file name argument. */

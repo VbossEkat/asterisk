@@ -1,7 +1,7 @@
 /*
  * Asterisk -- An open source telephony toolkit.
  *
- * Copyright (C) 1999 - 2015, Digium, Inc.
+ * Copyright (C) 1999 - 2016, Digium, Inc.
  *
  * Mark Spencer <markster@digium.com>
  *
@@ -110,7 +110,6 @@ ASTERISK_REGISTER_FILE()
 #include "asterisk/stasis_bridges.h"
 #include "asterisk/core_local.h"
 #include "asterisk/mixmonitor.h"
-#include "asterisk/core_unreal.h"
 #include "asterisk/bridge_basic.h"
 #include "asterisk/max_forwards.h"
 
@@ -1023,6 +1022,16 @@ ASTERISK_REGISTER_FILE()
 				<parameter name="LastCall">
 					<para>The time this member last took a call, expressed in seconds since 00:00, Jan 1, 1970 UTC.</para>
 				</parameter>
+				<parameter name="LastPause">
+					<para>The time when started last paused the queue member.</para>
+				</parameter>
+				<parameter name="InCall">
+					<para>Set to 1 if member is in call. Set to 0 after LastCall time is updated.</para>
+					<enumlist>
+						<enum name="0"/>
+						<enum name="1"/>
+					</enumlist>
+				</parameter>
 				<parameter name="Status">
 					<para>The numeric device state status of the queue member.</para>
 					<enumlist>
@@ -1326,9 +1335,9 @@ enum {
 };
 
 enum {
-     QUEUE_AUTOPAUSE_OFF = 0,
-     QUEUE_AUTOPAUSE_ON,
-     QUEUE_AUTOPAUSE_ALL
+	QUEUE_AUTOPAUSE_OFF = 0,
+	QUEUE_AUTOPAUSE_ON,
+	QUEUE_AUTOPAUSE_ALL
 };
 
 enum queue_reload_mask {
@@ -1518,7 +1527,7 @@ struct queue_ent {
 	int linwrapped;                        /*!< Is the linpos wrapped? */
 	time_t start;                          /*!< When we started holding */
 	time_t expire;                         /*!< When this entry should expire (time out of queue) */
-	int cancel_answered_elsewhere;	       /*!< Whether we should force the CAE flag on this call (C) option*/
+	int cancel_answered_elsewhere;         /*!< Whether we should force the CAE flag on this call (C) option*/
 	struct ast_channel *chan;              /*!< Our channel */
 	AST_LIST_HEAD_NOLOCK(,penalty_rule) qe_rules; /*!< Local copy of the queue's penalty rules */
 	struct penalty_rule *pr;               /*!< Pointer to the next penalty rule to implement */
@@ -1540,7 +1549,9 @@ struct member {
 	char reason_paused[80];              /*!< Reason of paused if member is paused */
 	int queuepos;                        /*!< In what order (pertains to certain strategies) should this member be called? */
 	time_t lastcall;                     /*!< When last successful call was hungup */
-	struct call_queue *lastqueue;	     /*!< Last queue we received a call */
+	time_t lastpause;                    /*!< When started the last pause */
+	unsigned int in_call:1;              /*!< True if member is still in call. (so lastcall is not actual) */
+	struct call_queue *lastqueue;        /*!< Last queue we received a call */
 	unsigned int dead:1;                 /*!< Used to detect members deleted in realtime */
 	unsigned int delme:1;                /*!< Flag to delete entry on reload */
 	unsigned int call_pending:1;         /*!< TRUE if the Q is attempting to place a call to the member. */
@@ -1677,7 +1688,7 @@ struct call_queue {
 	int memberdelay;                    /*!< Seconds to delay connecting member to caller */
 	int autofill;                       /*!< Ignore the head call status and ring an available agent */
 
-	struct ao2_container *members;             /*!< Head of the list of members */
+	struct ao2_container *members;      /*!< Head of the list of members */
 	struct queue_ent *head;             /*!< Head of the list of callers */
 	AST_LIST_ENTRY(call_queue) list;    /*!< Next call queue */
 	AST_LIST_HEAD_NOLOCK(, penalty_rule) rules; /*!< The list of penalty rules to invoke */
@@ -2177,7 +2188,7 @@ static void queue_publish_member_blob(struct stasis_message_type *type, struct a
 
 static struct ast_json *queue_member_blob_create(struct call_queue *q, struct member *mem)
 {
-	return ast_json_pack("{s: s, s: s, s: s, s: s, s: s, s: i, s: i, s: i, s: i, s: i, s: s, s: i}",
+	return ast_json_pack("{s: s, s: s, s: s, s: s, s: s, s: i, s: i, s: i, s: i, s: i, s: i, s: i, s: s, s: i}",
 		"Queue", q->name,
 		"MemberName", mem->membername,
 		"Interface", mem->interface,
@@ -2186,6 +2197,8 @@ static struct ast_json *queue_member_blob_create(struct call_queue *q, struct me
 		"Penalty", mem->penalty,
 		"CallsTaken", mem->calls,
 		"LastCall", (int)mem->lastcall,
+		"LastPause", (int)mem->lastpause,
+		"InCall", mem->in_call,
 		"Status", mem->status,
 		"Paused", mem->paused,
 		"PausedReason", mem->reason_paused,
@@ -2248,6 +2261,10 @@ static int get_member_status(struct call_queue *q, int max_penalty, int min_pena
 		default_case:
 			if (member->paused && (conditions & QUEUE_EMPTY_PAUSED)) {
 				ast_debug(4, "%s is unavailable because he is paused'\n", member->membername);
+				break;
+			} else if ((conditions & QUEUE_EMPTY_WRAPUP) && member->in_call && q->wrapuptime) {
+				ast_debug(4, "%s is unavailable because still in call, so we can`t check "
+					"wrapuptime (%d)\n", member->membername, q->wrapuptime);
 				break;
 			} else if ((conditions & QUEUE_EMPTY_WRAPUP) && member->lastcall && q->wrapuptime && (time(NULL) - q->wrapuptime < member->lastcall)) {
 				ast_debug(4, "%s is unavailable because it has only been %d seconds since his last call (wrapup time is %d)\n", member->membername, (int) (time(NULL) - member->lastcall), q->wrapuptime);
@@ -2316,6 +2333,9 @@ static int is_member_available(struct call_queue *q, struct member *mem)
 	}
 
 	/* Let wrapuptimes override device state availability */
+	if (q->wrapuptime && mem->in_call) {
+		available = 0; /* member is still in call, cant check wrapuptime to lastcall time */
+	}
 	if (mem->lastcall && q->wrapuptime && (time(NULL) - q->wrapuptime < mem->lastcall)) {
 		available = 0;
 	}
@@ -2499,6 +2519,9 @@ static struct member *create_queue_member(const char *interface, const char *mem
 		cur->ringinuse = ringinuse;
 		cur->penalty = penalty;
 		cur->paused = paused;
+		if (paused) {
+			time(&cur->lastpause); /* Update time of last pause */
+		}
 		ast_copy_string(cur->interface, interface, sizeof(cur->interface));
 		if (!ast_strlen_zero(state_interface)) {
 			ast_copy_string(cur->state_interface, state_interface, sizeof(cur->state_interface));
@@ -2668,6 +2691,7 @@ static void clear_queue(struct call_queue *q)
 		while ((mem = ao2_iterator_next(&mem_iter))) {
 			mem->calls = 0;
 			mem->lastcall = 0;
+			mem->in_call = 0;
 			ao2_ref(mem, -1);
 		}
 		ao2_iterator_destroy(&mem_iter);
@@ -4165,6 +4189,12 @@ static int can_ring_entry(struct queue_ent *qe, struct callattempt *call)
 		return 0;
 	}
 
+	if (call->member->in_call && call->lastqueue->wrapuptime) {
+		ast_debug(1, "%s is in call, so not available (wrapuptime %d)\n",
+			call->interface, call->lastqueue->wrapuptime);
+		return 0;
+	}
+
 	if ((call->lastqueue && call->lastqueue->wrapuptime && (time(NULL) - call->lastcall < call->lastqueue->wrapuptime))
 		|| (!call->lastqueue && qe->parent->wrapuptime && (time(NULL) - call->lastcall < qe->parent->wrapuptime))) {
 		ast_debug(1, "Wrapuptime not yet expired on queue %s for %s\n",
@@ -5387,6 +5417,9 @@ static int update_queue(struct call_queue *q, struct member *member, int callcom
 				time(&mem->lastcall);
 				mem->calls++;
 				mem->lastqueue = q;
+				mem->in_call = 0;
+				ast_debug(4, "Marked member %s as NOT in_call. Lastcall time: %ld \n",
+					mem->membername, (long)mem->lastcall);
 				ao2_ref(mem, -1);
 			}
 			ao2_unlock(qtmp);
@@ -5398,6 +5431,9 @@ static int update_queue(struct call_queue *q, struct member *member, int callcom
 		time(&member->lastcall);
 		member->calls++;
 		member->lastqueue = q;
+		member->in_call = 0;
+		ast_debug(4, "Marked member %s as NOT in_call. Lastcall time: %ld \n",
+			member->membername, (long)member->lastcall);
 		ao2_unlock(q);
 	}
 	ao2_lock(q);
@@ -5405,9 +5441,13 @@ static int update_queue(struct call_queue *q, struct member *member, int callcom
 	if (callcompletedinsl) {
 		q->callscompletedinsl++;
 	}
-	/* Calculate talktime using the same exponential average as holdtime code*/
-	oldtalktime = q->talktime;
-	q->talktime = (((oldtalktime << 2) - oldtalktime) + newtalktime) >> 2;
+	if (q->callscompletedinsl == 1) {
+		q->talktime = newtalktime;
+	} else {
+		/* Calculate talktime using the same exponential average as holdtime code */
+		oldtalktime = q->talktime;
+		q->talktime = (((oldtalktime << 2) - oldtalktime) + newtalktime) >> 2;
+	}
 	ao2_unlock(q);
 	return 0;
 }
@@ -6376,6 +6416,9 @@ static int try_calling(struct queue_ent *qe, struct ast_flags opts, char **opt_a
 	int callcompletedinsl;
 	struct ao2_iterator memi;
 	struct queue_end_bridge *queue_end_bridge = NULL;
+	struct ao2_iterator queue_iter; /* to iterate through all queues (for shared_lastcall)*/
+	struct member *mem;
+	struct call_queue *queuetmp;
 
 	memset(&bridge_config, 0, sizeof(bridge_config));
 	tmpid[0] = 0;
@@ -6801,6 +6844,28 @@ static int try_calling(struct queue_ent *qe, struct ast_flags opts, char **opt_a
 			}
 		}
 		qe->handled++;
+
+		/** mark member as "in_call" in all queues */
+		if (shared_lastcall) {
+			queue_iter = ao2_iterator_init(queues, 0);
+			while ((queuetmp = ao2_t_iterator_next(&queue_iter, "Iterate through queues"))) {
+				ao2_lock(queuetmp);
+				if ((mem = ao2_find(queuetmp->members, member, OBJ_POINTER))) {
+					mem->in_call = 1;
+					ast_debug(4, "Marked member %s as in_call \n", mem->membername);
+					ao2_ref(mem, -1);
+				}
+				ao2_unlock(queuetmp);
+				queue_t_unref(queuetmp, "Done with iterator");
+			}
+			ao2_iterator_destroy(&queue_iter);
+		} else {
+			ao2_lock(qe->parent);
+			member->in_call = 1;
+			ast_debug(4, "Marked member %s as in_call \n", member->membername);
+			ao2_unlock(qe->parent);
+		}
+
 		ast_queue_log(queuename, ast_channel_uniqueid(qe->chan), member->membername, "CONNECT", "%ld|%s|%ld", (long) (time(NULL) - qe->start), ast_channel_uniqueid(peer),
 													(long)(orig - to > 0 ? (orig - to) / 1000 : 0));
 
@@ -6905,13 +6970,14 @@ static void dump_queue_members(struct call_queue *pm_queue)
 			continue;
 		}
 
-		ast_str_append(&value, 0, "%s%s;%d;%d;%s;%s",
+		ast_str_append(&value, 0, "%s%s;%d;%d;%s;%s;%s",
 			ast_str_strlen(value) ? "|" : "",
 			cur_member->interface,
 			cur_member->penalty,
 			cur_member->paused,
 			cur_member->membername,
-			cur_member->state_interface);
+			cur_member->state_interface,
+			cur_member->reason_paused);
 
 		ao2_ref(cur_member, -1);
 	}
@@ -6988,7 +7054,7 @@ static int remove_from_queue(const char *queuename, const char *interface)
  * \retval RES_EXISTS queue exists but no members
  * \retval RES_OUT_OF_MEMORY queue exists but not enough memory to create member
 */
-static int add_to_queue(const char *queuename, const char *interface, const char *membername, int penalty, int paused, int dump, const char *state_interface)
+static int add_to_queue(const char *queuename, const char *interface, const char *membername, int penalty, int paused, int dump, const char *state_interface, const char *reason_paused)
 {
 	struct call_queue *q;
 	struct member *new_member, *old_member;
@@ -7005,6 +7071,9 @@ static int add_to_queue(const char *queuename, const char *interface, const char
 		if ((new_member = create_queue_member(interface, membername, penalty, paused, state_interface, q->ringinuse))) {
 			new_member->ringinuse = q->ringinuse;
 			new_member->dynamic = 1;
+			if (reason_paused) {
+				ast_copy_string(new_member->reason_paused, reason_paused, sizeof(new_member->reason_paused));
+			}
 			member_add_to_queue(q, new_member);
 			queue_publish_member_blob(queue_member_added_type(), queue_member_blob_create(q, new_member));
 
@@ -7082,6 +7151,7 @@ static void set_queue_member_pause(struct call_queue *q, struct member *mem, con
 		if (!ast_strlen_zero(reason)) {
 			ast_copy_string(mem->reason_paused, reason, sizeof(mem->reason_paused));
 		}
+		time(&mem->lastpause); /* update last pause field */
 	} else {
 		ast_copy_string(mem->reason_paused, "", sizeof(mem->reason_paused));
 	}
@@ -7361,6 +7431,7 @@ static void reload_queue_members(void)
 	int penalty = 0;
 	char *paused_tok;
 	int paused = 0;
+	char *reason_paused;
 	struct ast_db_entry *db_tree;
 	struct ast_db_entry *entry;
 	struct call_queue *cur_queue;
@@ -7407,6 +7478,7 @@ static void reload_queue_members(void)
 			paused_tok = strsep(&member, ";");
 			membername = strsep(&member, ";");
 			state_interface = strsep(&member, ";");
+			reason_paused = strsep(&member, ";");
 
 			if (!penalty_tok) {
 				ast_log(LOG_WARNING, "Error parsing persistent member string for '%s' (penalty)\n", queue_name);
@@ -7428,9 +7500,10 @@ static void reload_queue_members(void)
 				break;
 			}
 
-			ast_debug(1, "Reload Members: Queue: %s  Member: %s  Name: %s  Penalty: %d  Paused: %d\n", queue_name, interface, membername, penalty, paused);
+			ast_debug(1, "Reload Members: Queue: %s  Member: %s  Name: %s  Penalty: %d  Paused: %d ReasonPause: %s\n",
+			              queue_name, interface, membername, penalty, paused, reason_paused);
 
-			if (add_to_queue(queue_name, interface, membername, penalty, paused, 0, state_interface) == RES_OUTOFMEMORY) {
+			if (add_to_queue(queue_name, interface, membername, penalty, paused, 0, state_interface, reason_paused) == RES_OUTOFMEMORY) {
 				ast_log(LOG_ERROR, "Out of Memory when reloading persistent queue member\n");
 				break;
 			}
@@ -7627,7 +7700,7 @@ static int aqm_exec(struct ast_channel *chan, const char *data)
 		}
 	}
 
-	switch (add_to_queue(args.queuename, args.interface, args.membername, penalty, 0, queue_persistent_members, args.state_interface)) {
+	switch (add_to_queue(args.queuename, args.interface, args.membername, penalty, 0, queue_persistent_members, args.state_interface, NULL)) {
 	case RES_OKAY:
 		if (ast_strlen_zero(args.membername) || !log_membername_as_agent) {
 			ast_queue_log(args.queuename, ast_channel_uniqueid(chan), args.interface, "ADDMEMBER", "%s", "");
@@ -9255,16 +9328,17 @@ static char *__queues_show(struct mansession *s, int fd, int argc, const char * 
 
 				ast_str_append(&out, 0, " (ringinuse %s)", mem->ringinuse ? "enabled" : "disabled");
 
-				ast_str_append(&out, 0, "%s%s%s%s%s%s",
+				ast_str_append(&out, 0, "%s%s%s%s%s%s%s%s%s",
 					mem->dynamic ? ast_term_color(COLOR_CYAN, COLOR_BLACK) : "", mem->dynamic ? " (dynamic)" : "", ast_term_reset(),
-					mem->realtime ? ast_term_color(COLOR_MAGENTA, COLOR_BLACK) : "", mem->realtime ? " (realtime)" : "", ast_term_reset());
+					mem->realtime ? ast_term_color(COLOR_MAGENTA, COLOR_BLACK) : "", mem->realtime ? " (realtime)" : "", ast_term_reset(),
+					mem->in_call ? ast_term_color(COLOR_BROWN, COLOR_BLACK) : "", mem->in_call ? " (in call)" : "", ast_term_reset());
 				if (mem->paused) {
 					if (ast_strlen_zero(mem->reason_paused)) {
-						ast_str_append(&out, 0, " %s(paused)%s",
-							ast_term_color(COLOR_BROWN, COLOR_BLACK), ast_term_reset());
+						ast_str_append(&out, 0, " %s(paused was %ld secs ago)%s",
+							ast_term_color(COLOR_BROWN, COLOR_BLACK), (long) (time(NULL) - mem->lastpause), ast_term_reset());
 					} else {
-						ast_str_append(&out, 0, " %s(paused:%s)%s", ast_term_color(COLOR_BROWN, COLOR_BLACK),
-							mem->reason_paused, ast_term_reset());
+						ast_str_append(&out, 0, " %s(paused:%s was %ld secs ago)%s", ast_term_color(COLOR_BROWN, COLOR_BLACK),
+							mem->reason_paused,  (long) (time(NULL) - mem->lastcall), ast_term_reset());
 					}
 				}
 
@@ -9636,13 +9710,16 @@ static int manager_queues_status(struct mansession *s, const struct message *m)
 						"Penalty: %d\r\n"
 						"CallsTaken: %d\r\n"
 						"LastCall: %d\r\n"
+						"LastPause: %d\r\n"
+						"InCall: %d\r\n"
 						"Status: %d\r\n"
 						"Paused: %d\r\n"
 						"PausedReason: %s\r\n"
 						"%s"
 						"\r\n",
 						q->name, mem->membername, mem->interface, mem->state_interface, mem->dynamic ? "dynamic" : "static",
-						mem->penalty, mem->calls, (int)mem->lastcall, mem->status, mem->paused, mem->reason_paused, idText);
+						mem->penalty, mem->calls, (int)mem->lastcall, (int)mem->lastpause, mem->in_call, mem->status,
+						mem->paused, mem->reason_paused, idText);
 					++q_items;
 				}
 				ao2_ref(mem, -1);
@@ -9718,7 +9795,7 @@ static int manager_add_queue_member(struct mansession *s, const struct message *
 		paused = abs(ast_true(paused_s));
 	}
 
-	switch (add_to_queue(queuename, interface, membername, penalty, paused, queue_persistent_members, state_interface)) {
+	switch (add_to_queue(queuename, interface, membername, penalty, paused, queue_persistent_members, state_interface, NULL)) {
 	case RES_OKAY:
 		if (ast_strlen_zero(membername) || !log_membername_as_agent) {
 			ast_queue_log(queuename, "MANAGER", interface, "ADDMEMBER", "%s", paused ? "PAUSED" : "");
@@ -10024,7 +10101,7 @@ static char *handle_queue_add_member(struct ast_cli_entry *e, int cmd, struct as
 		state_interface = a->argv[11];
 	}
 
-	switch (add_to_queue(queuename, interface, membername, penalty, 0, queue_persistent_members, state_interface)) {
+	switch (add_to_queue(queuename, interface, membername, penalty, 0, queue_persistent_members, state_interface, NULL)) {
 	case RES_OKAY:
 		if (ast_strlen_zero(membername) || !log_membername_as_agent) {
 			ast_queue_log(queuename, "CLI", interface, "ADDMEMBER", "%s", "");

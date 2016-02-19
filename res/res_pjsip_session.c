@@ -1266,6 +1266,7 @@ struct ast_sip_session *ast_sip_session_alloc(struct ast_sip_endpoint *endpoint,
 	RAII_VAR(struct ast_sip_session *, session, NULL, ao2_cleanup);
 	struct ast_sip_session_supplement *iter;
 	int dsp_features = 0;
+	char tps_name[AST_TASKPROCESSOR_MAX_NAME + 1];
 
 	session = ao2_alloc(sizeof(*session), session_destructor);
 	if (!session) {
@@ -1286,7 +1287,11 @@ struct ast_sip_session *ast_sip_session_alloc(struct ast_sip_endpoint *endpoint,
 	/* fill session->media with available types */
 	ao2_callback(sdp_handlers, OBJ_NODATA, add_session_media, session);
 
-	session->serializer = ast_sip_create_serializer();
+	/* Create name with seq number appended. */
+	ast_taskprocessor_build_name(tps_name, sizeof(tps_name), "pjsip/session/%s",
+		ast_sorcery_object_get_id(endpoint));
+
+	session->serializer = ast_sip_create_serializer(tps_name);
 	if (!session->serializer) {
 		return NULL;
 	}
@@ -2800,13 +2805,14 @@ static pjsip_inv_callback inv_callback = {
 /*! \brief Hook for modifying outgoing messages with SDP to contain the proper address information */
 static void session_outgoing_nat_hook(pjsip_tx_data *tdata, struct ast_sip_transport *transport)
 {
+	RAII_VAR(struct ast_sip_transport_state *, transport_state, ast_sip_get_transport_state(ast_sorcery_object_get_id(transport)), ao2_cleanup);
 	struct ast_sip_nat_hook *hook = ast_sip_mod_data_get(
 		tdata->mod_data, session_module.id, MOD_DATA_NAT_HOOK);
 	struct pjmedia_sdp_session *sdp;
 	int stream;
 
 	/* SDP produced by us directly will never be multipart */
-	if (hook || !tdata->msg->body || pj_stricmp2(&tdata->msg->body->content_type.type, "application") ||
+	if (!transport_state || hook || !tdata->msg->body || pj_stricmp2(&tdata->msg->body->content_type.type, "application") ||
 		pj_stricmp2(&tdata->msg->body->content_type.subtype, "sdp") || ast_strlen_zero(transport->external_media_address)) {
 		return;
 	}
@@ -2820,7 +2826,7 @@ static void session_outgoing_nat_hook(pjsip_tx_data *tdata, struct ast_sip_trans
 		ast_copy_pj_str(host, &sdp->conn->addr, sizeof(host));
 		ast_sockaddr_parse(&addr, host, PARSE_PORT_FORBID);
 
-		if (ast_apply_ha(transport->localnet, &addr) != AST_SENSE_ALLOW) {
+		if (ast_apply_ha(transport_state->localnet, &addr) != AST_SENSE_ALLOW) {
 			pj_strdup2(tdata->pool, &sdp->conn->addr, transport->external_media_address);
 		}
 	}

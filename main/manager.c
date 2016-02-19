@@ -2342,7 +2342,7 @@ static char *handle_showmanager(struct ast_cli_entry *e, int cmd, struct ast_cli
 		"        write perm: %s\n"
 		"   displayconnects: %s\n"
 		"allowmultiplelogin: %s\n",
-		(user->username ? user->username : "(N/A)"),
+		S_OR(user->username, "(N/A)"),
 		(user->secret ? "<Set>" : "(N/A)"),
 		((user->acl && !ast_acl_list_is_empty(user->acl)) ? "yes" : "no"),
 		user_authority_to_str(user->readperm, &rauthority),
@@ -8538,6 +8538,8 @@ static void manager_shutdown(void)
 		manager_free_user(user);
 	}
 	acl_change_stasis_unsubscribe();
+
+	ast_free(manager_channelvars);
 }
 
 

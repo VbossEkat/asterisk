@@ -200,6 +200,84 @@ Queue
 -------------------
  * Added field ReasonPause on QueueMemberStatus if set when paused, the reason
    the queue member was paused.
+ * Added field LastPause on QueueMemberStatus for time when started the last
+   pause for a queue member.
+ * Show the time when started the last pause for queue member on CLI for command
+   'queue show'.
+
+
+------------------------------------------------------------------------------
+--- Functionality changes from Asterisk 13.7.0 to Asterisk 13.8.0 ------------
+------------------------------------------------------------------------------
+
+app_confbridge
+------------------
+ * Added CONFBRIDGE_INFO(muted,) for querying the muted conference state.
+
+ * Added Muted header to AMI ConfbridgeListRooms action response list events
+   to indicate the muted conference state.
+
+ * Added Muted column to CLI "confbridge list" output to indicate the muted
+   conference state and made the locked column a yes/no value instead of a
+   locked/unlocked value.
+
+res_pjproject
+------------------
+ * This module is the successor of res_pjsip_log_forwarder.  As well as
+   handling the log forwarding (which now displays as 'pjproject:0' instead
+   of 'pjsip:0'), it also adds a 'pjproject show buildopts' command to the CLI.
+   This displays the compiled-in options of the pjproject installation
+   Asterisk is currently running against.
+
+res_pjsip
+------------------
+ * Added new global option (regcontext) to pjsip. When set, Asterisk will
+   dynamically create and destroy a NoOp priority 1 extension
+   for a given endpoint who registers or unregisters with us.
+
+res_pjsip_history
+------------------
+ * A new module, res_pjsip_history, has been added that provides SIP history
+   viewing/filtering from the CLI. The module is intended to be used on systems
+   with busy SIP traffic, where existing forms of viewing SIP messages - such
+   as the res_pjsip_logger - may be inadequate. The module provides two new
+   CLI commands:
+   - 'pjsip set history {on|off|clear}' - this enables/disables SIP history
+     capturing, as well as clears an existing history capture. Note that SIP
+     packets captured are stored in memory until cleared. As a result, the
+     history capture should only be used for debugging/viewing purposes, and
+     should *NOT* be left permanently enabled on a system.
+   - 'pjsip show history' - displays the captured SIP history. When invoked
+     with no options, the entire captured history is displayed. Two options
+     are available:
+     -- 'entry <num>' - display a detailed view of a single SIP message in
+        the history
+     -- 'where ...' - filter the history based on some expression. For more
+        information on filtering, view the current CLI help for the
+        'pjsip show history' command.
+
+Voicemail
+------------------
+ * app_voicemail and res_mwi_external can now be built together.  The default
+   remains to build app_voicemail and not res_mwi_external but if they are
+   both built, the load order will cause res_mwi_external to load first and
+   app_voicemail will be skipped.  Use 'preload=app_voicemail.so' in
+   modules.conf to force app_voicemail to be the voicemail provider.
+
+res_pjsip_sdp_rtp
+------------------
+ * A new option (bind_rtp_to_media_address) has been added to endpoint which
+   will cause res_pjsip_sdp_rtp to actually bind the RTP instance to the
+   media_address as well as using it in the SDP.  If set, RTP packets will now
+   originate from the media address instead of the operating system's "primary"
+   ip address.
+
+res_rtp_asterisk
+------------------
+ * A new configuration section - ice_host_candidates - has been added to
+   rtp.conf, allowing automatically discovered ICE host candidates to be
+   overriden. This allows an Asterisk server behind a 1:1 NAT to send its
+   external IP as a host candidate rather than relying on STUN to discover it.
 
 ------------------------------------------------------------------------------
 --- Functionality changes from Asterisk 13.6.0 to Asterisk 13.7.0 ------------

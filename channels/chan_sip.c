@@ -3970,6 +3970,13 @@ static int retrans_pkt(const void *data)
 			}
 
 			/* For non-invites, a maximum of 4 secs */
+			if (INT_MAX / pkt->timer_a < pkt->timer_t1) {
+				/*
+				 * Uh Oh, we will have an integer overflow.
+				 * Recalculate previous timeout time instead.
+				 */
+				pkt->timer_a = pkt->timer_a / 2;
+			}
 			siptimer_a = pkt->timer_t1 * pkt->timer_a;	/* Double each time */
 			if (pkt->method != SIP_INVITE && siptimer_a > 4000) {
 				siptimer_a = 4000;
@@ -14655,7 +14662,7 @@ static void state_notify_build_xml(struct state_notify_data *data, int full, con
 
 	switch (data->state) {
 	case (AST_EXTENSION_RINGING | AST_EXTENSION_INUSE):
-		statestring = (sip_cfg.notifyringing) ? "early" : "confirmed";
+		statestring = (sip_cfg.notifyringing == NOTIFYRINGING_ENABLED) ? "early" : "confirmed";
 		local_state = NOTIFY_INUSE;
 		pidfstate = "busy";
 		pidfnote = "Ringing";
@@ -15159,6 +15166,12 @@ static int manager_sipnotify(struct mansession *s, const struct message *m)
 			header = header->next;
 		}
 	}
+
+	/* Now that we have the peer's address, set our ip and change callid */
+	ast_sip_ouraddrfor(&p->sa, &p->ourip, p);
+	build_via(p);
+
+	change_callid_pvt(p, NULL);
 
 	sip_scheddestroy(p, SIP_TRANS_TIMEOUT);
 	transmit_invite(p, SIP_NOTIFY, 0, 2, NULL);
@@ -21193,7 +21206,7 @@ static char *sip_show_settings(struct ast_cli_entry *e, int cmd, struct ast_cli_
 	ast_cli(a->fd, "  Outbound reg. timeout:  %d secs\n", global_reg_timeout);
 	ast_cli(a->fd, "  Outbound reg. attempts: %d\n", global_regattempts_max);
 	ast_cli(a->fd, "  Outbound reg. retry 403:%d\n", global_reg_retry_403);
-	ast_cli(a->fd, "  Notify ringing state:   %s\n", AST_CLI_YESNO(sip_cfg.notifyringing));
+	ast_cli(a->fd, "  Notify ringing state:   %s%s\n", AST_CLI_YESNO(sip_cfg.notifyringing), sip_cfg.notifyringing == NOTIFYRINGING_NOTINUSE ? " (when not in use)" : "");
 	if (sip_cfg.notifyringing) {
 		ast_cli(a->fd, "    Include CID:          %s%s\n",
 				AST_CLI_YESNO(sip_cfg.notifycid),
@@ -31511,6 +31524,7 @@ static int reload_config(enum channelreloadreason reason)
 	global_dynamic_exclude_static = 0;	/* Exclude static peers */
 	sip_cfg.tcp_enabled = FALSE;
 	sip_cfg.websocket_enabled = TRUE;
+	sip_cfg.websocket_write_timeout = AST_DEFAULT_WEBSOCKET_WRITE_TIMEOUT;
 
 	/* Session-Timers */
 	global_st_mode = SESSION_TIMER_MODE_ACCEPT;
@@ -31739,7 +31753,11 @@ static int reload_config(enum channelreloadreason reason)
 		} else if (!strcasecmp(v->name, "directrtpsetup")) {
 			sip_cfg.directrtpsetup = ast_true(v->value);
 		} else if (!strcasecmp(v->name, "notifyringing")) {
-			sip_cfg.notifyringing = ast_true(v->value);
+			if (!strcasecmp(v->value, "notinuse")) {
+				sip_cfg.notifyringing = NOTIFYRINGING_NOTINUSE;
+			} else {
+				sip_cfg.notifyringing = ast_true(v->value) ? NOTIFYRINGING_ENABLED : NOTIFYRINGING_DISABLED;
+			}
 		} else if (!strcasecmp(v->name, "notifyhold")) {
 			sip_cfg.notifyhold = ast_true(v->value);
 		} else if (!strcasecmp(v->name, "notifycid")) {
@@ -33007,8 +33025,8 @@ static int sip_sipredirect(struct sip_pvt *p, const char *dest)
 
 			memset(ldomain, 0, sizeof(ldomain));
 			local_to_header++;
-			/* This is okey because lhost and lport are as big as tmp */
-			sscanf(local_to_header, "%256[^<>; ]", ldomain);
+			/* Will copy no more than 255 chars plus null terminator. */
+			sscanf(local_to_header, "%255[^<>; ]", ldomain);
 			if (ast_strlen_zero(ldomain)) {
 				ast_log(LOG_ERROR, "Can't find the host address\n");
 				return 0;

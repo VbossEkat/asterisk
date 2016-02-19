@@ -651,6 +651,8 @@ PBX_MSG_NOSIGNAL
 PBX_IXJUSER
 GMIME_LIBS
 GMIME_CFLAGS
+PBX_SSL_OP_NO_TLSV1_2
+PBX_SSL_OP_NO_TLSV1_1
 OPENH323_BUILD
 OPENH323_SUFFIX
 OPENH323_LIBDIR
@@ -695,6 +697,10 @@ AST_TRAMPOLINES
 AST_DECLARATION_AFTER_STATEMENT
 GC_LDFLAGS
 GC_CFLAGS
+AST_UNDEFINED_SANITIZER
+AST_LEAK_SANITIZER
+AST_THREAD_SANITIZER
+AST_ADDRESS_SANITIZER
 PBX_PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP
 PBX_PTHREAD_RWLOCK_INITIALIZER
 AST_ASTERISKSSL
@@ -929,6 +935,10 @@ PBX_PJ_TRANSACTION_GRP_LOCK
 PJ_TRANSACTION_GRP_LOCK_DIR
 PJ_TRANSACTION_GRP_LOCK_INCLUDE
 PJ_TRANSACTION_GRP_LOCK_LIB
+PBX_PJSIP_DLG_CREATE_UAS_AND_INC_LOCK
+PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_DIR
+PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_INCLUDE
+PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_LIB
 PBX_POPT
 POPT_DIR
 POPT_INCLUDE
@@ -1174,6 +1184,7 @@ SHA1SUM
 LDCONFIG
 DOWNLOAD
 FETCH
+ALEMBIC
 GIT
 XMLSTARLET
 XMLLINT
@@ -7479,6 +7490,47 @@ $as_echo "no" >&6; }
 fi
 
 
+# Extract the first word of "alembic", so it can be a program name with args.
+set dummy alembic; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_path_ALEMBIC+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  case $ALEMBIC in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_ALEMBIC="$ALEMBIC" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_path_ALEMBIC="$as_dir/$ac_word$ac_exec_ext"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  test -z "$ac_cv_path_ALEMBIC" && ac_cv_path_ALEMBIC=":"
+  ;;
+esac
+fi
+ALEMBIC=$ac_cv_path_ALEMBIC
+if test -n "$ALEMBIC"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ALEMBIC" >&5
+$as_echo "$ALEMBIC" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
 if test "${WGET}" != ":" ; then
   DOWNLOAD=${WGET}
 else if test "${CURL}" != ":" ; then
@@ -10420,6 +10472,18 @@ if test "${with_popt+set}" = set; then :
 
 fi
 
+
+
+
+
+
+
+
+PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_DESCRIP="PJSIP Dialog Create UAS with Incremented Lock"
+PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_OPTION=pjsip
+PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_DIR=${PJPROJECT_DIR}
+
+PBX_PJSIP_DLG_CREATE_UAS_AND_INC_LOCK=0
 
 
 
@@ -13653,7 +13717,7 @@ else
     We can't simply define LARGE_OFF_T to be 9223372036854775807,
     since some C++ compilers masquerading as C compilers
     incorrectly reject 9223372036854775807.  */
-#define LARGE_OFF_T ((((off_t) 1 << 31) << 31) - 1 + (((off_t) 1 << 31) << 31))
+#define LARGE_OFF_T (((off_t) 1 << 62) - 1 + ((off_t) 1 << 62))
   int off_t_is_large[(LARGE_OFF_T % 2147483629 == 721
 		       && LARGE_OFF_T % 2147483647 == 1)
 		      ? 1 : -1];
@@ -13699,7 +13763,7 @@ else
     We can't simply define LARGE_OFF_T to be 9223372036854775807,
     since some C++ compilers masquerading as C compilers
     incorrectly reject 9223372036854775807.  */
-#define LARGE_OFF_T ((((off_t) 1 << 31) << 31) - 1 + (((off_t) 1 << 31) << 31))
+#define LARGE_OFF_T (((off_t) 1 << 62) - 1 + ((off_t) 1 << 62))
   int off_t_is_large[(LARGE_OFF_T % 2147483629 == 721
 		       && LARGE_OFF_T % 2147483647 == 1)
 		      ? 1 : -1];
@@ -13723,7 +13787,7 @@ rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
     We can't simply define LARGE_OFF_T to be 9223372036854775807,
     since some C++ compilers masquerading as C compilers
     incorrectly reject 9223372036854775807.  */
-#define LARGE_OFF_T ((((off_t) 1 << 31) << 31) - 1 + (((off_t) 1 << 31) << 31))
+#define LARGE_OFF_T (((off_t) 1 << 62) - 1 + ((off_t) 1 << 62))
   int off_t_is_large[(LARGE_OFF_T % 2147483629 == 721
 		       && LARGE_OFF_T % 2147483647 == 1)
 		      ? 1 : -1];
@@ -13768,7 +13832,7 @@ else
     We can't simply define LARGE_OFF_T to be 9223372036854775807,
     since some C++ compilers masquerading as C compilers
     incorrectly reject 9223372036854775807.  */
-#define LARGE_OFF_T ((((off_t) 1 << 31) << 31) - 1 + (((off_t) 1 << 31) << 31))
+#define LARGE_OFF_T (((off_t) 1 << 62) - 1 + ((off_t) 1 << 62))
   int off_t_is_large[(LARGE_OFF_T % 2147483629 == 721
 		       && LARGE_OFF_T % 2147483647 == 1)
 		      ? 1 : -1];
@@ -13792,7 +13856,7 @@ rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
     We can't simply define LARGE_OFF_T to be 9223372036854775807,
     since some C++ compilers masquerading as C compilers
     incorrectly reject 9223372036854775807.  */
-#define LARGE_OFF_T ((((off_t) 1 << 31) << 31) - 1 + (((off_t) 1 << 31) << 31))
+#define LARGE_OFF_T (((off_t) 1 << 62) - 1 + ((off_t) 1 << 62))
   int off_t_is_large[(LARGE_OFF_T % 2147483629 == 721
 		       && LARGE_OFF_T % 2147483647 == 1)
 		      ? 1 : -1];
@@ -17567,6 +17631,134 @@ fi
 
 CFLAGS="$saved_CFLAGS"
 
+
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for -fsanitize=address support" >&5
+$as_echo_n "checking for -fsanitize=address support... " >&6; }
+saved_sanitize_CFLAGS="${CFLAGS}"
+saved_sanitize_LDFLAGS="${LDFLAGS}"
+CFLAGS="-fsanitize=address -fno-omit-frame-pointer"
+LDFLAGS="-fsanitize=address"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+int x = 1;
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+	AST_ADDRESS_SANITIZER=1
+else
+  AST_ADDRESS_SANITIZER=
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+CFLAGS="${saved_sanitize_CFLAGS}"
+LDFLAGS="${saved_sanitize_LDFLAGS}"
+
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for -fsanitize=thread support" >&5
+$as_echo_n "checking for -fsanitize=thread support... " >&6; }
+saved_sanitize_CFLAGS="${CFLAGS}"
+saved_sanitize_LDFLAGS="${LDFLAGS}"
+CFLAGS="-fno-omit-frame-pointer -pie -fPIE -fsanitize=thread"
+LDFLAGS="-fsanitize=thread -pie -fPIE"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+int x = 1;
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+	AST_THREAD_SANITIZER=1
+else
+  AST_THREAD_SANITIZER=
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+CFLAGS="${saved_sanitize_CFLAGS}"
+LDFLAGS="${saved_sanitize_LDFLAGS}"
+
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for -fsanitize=leak support" >&5
+$as_echo_n "checking for -fsanitize=leak support... " >&6; }
+saved_sanitize_CFLAGS="${CFLAGS}"
+saved_sanitize_LDFLAGS="${LDFLAGS}"
+CFLAGS="-fno-omit-frame-pointer -fsanitize=leak"
+LDFLAGS="-fsanitize=leak"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+int x = 1;
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+	AST_LEAK_SANITIZER=1
+else
+  AST_LEAK_SANITIZER=
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+CFLAGS="${saved_sanitize_CFLAGS}"
+LDFLAGS="${saved_sanitize_LDFLAGS}"
+
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for -fsanitize=undefined support" >&5
+$as_echo_n "checking for -fsanitize=undefined support... " >&6; }
+saved_sanitize_CFLAGS="${CFLAGS}"
+saved_sanitize_LDFLAGS="${LDFLAGS}"
+CFLAGS="-fno-omit-frame-pointer -fsanitize=undefined"
+LDFLAGS="-fsanitize=undefined"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+int x = 1;
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+	AST_UNDEFINED_SANITIZER=1
+else
+  AST_UNDEFINED_SANITIZER=
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+CFLAGS="${saved_sanitize_CFLAGS}"
+LDFLAGS="${saved_sanitize_LDFLAGS}"
 
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for -ffunction-sections support" >&5
@@ -24339,6 +24531,110 @@ fi
 
 
 
+if test "x${PBX_PJSIP_DLG_CREATE_UAS_AND_INC_LOCK}" != "x1" -a "${USE_PJSIP_DLG_CREATE_UAS_AND_INC_LOCK}" != "no"; then
+   pbxlibdir=""
+   # if --with-PJSIP_DLG_CREATE_UAS_AND_INC_LOCK=DIR has been specified, use it.
+   if test "x${PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_DIR}" != "x"; then
+      if test -d ${PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_DIR}/lib; then
+         pbxlibdir="-L${PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_DIR}/lib"
+      else
+         pbxlibdir="-L${PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_DIR}"
+      fi
+   fi
+   pbxfuncname="pjsip_dlg_create_uas_and_inc_lock"
+   if test "x${pbxfuncname}" = "x" ; then   # empty lib, assume only headers
+      AST_PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_FOUND=yes
+   else
+      ast_ext_lib_check_save_CFLAGS="${CFLAGS}"
+      CFLAGS="${CFLAGS} $PJPROJECT_CFLAGS"
+      as_ac_Lib=`$as_echo "ac_cv_lib_pjsip_${pbxfuncname}" | $as_tr_sh`
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for ${pbxfuncname} in -lpjsip" >&5
+$as_echo_n "checking for ${pbxfuncname} in -lpjsip... " >&6; }
+if eval \${$as_ac_Lib+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lpjsip ${pbxlibdir} $PJPROJECT_LIBS $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char ${pbxfuncname} ();
+int
+main ()
+{
+return ${pbxfuncname} ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  eval "$as_ac_Lib=yes"
+else
+  eval "$as_ac_Lib=no"
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+eval ac_res=\$$as_ac_Lib
+	       { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
+$as_echo "$ac_res" >&6; }
+if eval test \"x\$"$as_ac_Lib"\" = x"yes"; then :
+  AST_PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_FOUND=yes
+else
+  AST_PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_FOUND=no
+fi
+
+      CFLAGS="${ast_ext_lib_check_save_CFLAGS}"
+   fi
+
+   # now check for the header.
+   if test "${AST_PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_FOUND}" = "yes"; then
+      PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_LIB="${pbxlibdir} -lpjsip $PJPROJECT_LIBS"
+      # if --with-PJSIP_DLG_CREATE_UAS_AND_INC_LOCK=DIR has been specified, use it.
+      if test "x${PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_DIR}" != "x"; then
+         PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_INCLUDE="-I${PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_DIR}/include"
+      fi
+      PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_INCLUDE="${PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_INCLUDE} $PJPROJECT_CFLAGS"
+      if test "xpjsip.h" = "x" ; then	# no header, assume found
+         PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_HEADER_FOUND="1"
+      else				# check for the header
+         ast_ext_lib_check_saved_CPPFLAGS="${CPPFLAGS}"
+         CPPFLAGS="${CPPFLAGS} ${PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_INCLUDE}"
+         ac_fn_c_check_header_mongrel "$LINENO" "pjsip.h" "ac_cv_header_pjsip_h" "$ac_includes_default"
+if test "x$ac_cv_header_pjsip_h" = xyes; then :
+  PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_HEADER_FOUND=1
+else
+  PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_HEADER_FOUND=0
+fi
+
+
+         CPPFLAGS="${ast_ext_lib_check_saved_CPPFLAGS}"
+      fi
+      if test "x${PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_HEADER_FOUND}" = "x0" ; then
+         PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_LIB=""
+         PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_INCLUDE=""
+      else
+         if test "x${pbxfuncname}" = "x" ; then		# only checking headers -> no library
+            PJSIP_DLG_CREATE_UAS_AND_INC_LOCK_LIB=""
+         fi
+         PBX_PJSIP_DLG_CREATE_UAS_AND_INC_LOCK=1
+         cat >>confdefs.h <<_ACEOF
+#define HAVE_PJSIP_DLG_CREATE_UAS_AND_INC_LOCK 1
+_ACEOF
+
+      fi
+   fi
+fi
+
+
+
 if test "x${PBX_PJ_TRANSACTION_GRP_LOCK}" != "x1" -a "${USE_PJ_TRANSACTION_GRP_LOCK}" != "no"; then
    pbxlibdir=""
    # if --with-PJ_TRANSACTION_GRP_LOCK=DIR has been specified, use it.
@@ -30718,6 +31014,102 @@ rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
 
         CPPFLAGS="${saved_cppflags}"
     fi
+
+fi
+
+if test "$PBX_OPENSSL" = "1";
+then
+
+    if test "x${PBX_SSL_OP_NO_TLSV1_1}" != "x1"; then
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for SSL_OP_NO_TLSv1_1 in openssl/ssl.h" >&5
+$as_echo_n "checking for SSL_OP_NO_TLSv1_1 in openssl/ssl.h... " >&6; }
+	saved_cppflags="${CPPFLAGS}"
+	if test "x${SSL_OP_NO_TLSV1_1_DIR}" != "x"; then
+	    SSL_OP_NO_TLSV1_1_INCLUDE="-I${SSL_OP_NO_TLSV1_1_DIR}/include"
+	fi
+	CPPFLAGS="${CPPFLAGS} ${SSL_OP_NO_TLSV1_1_INCLUDE}"
+
+	cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+ #include <openssl/ssl.h>
+int
+main ()
+{
+#if defined(SSL_OP_NO_TLSv1_1)
+				int foo = 0;
+			        #else
+			        int foo = bar;
+			        #endif
+				0
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+     { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+		PBX_SSL_OP_NO_TLSV1_1=1
+
+$as_echo "#define HAVE_SSL_OP_NO_TLSV1_1 1" >>confdefs.h
+
+
+
+else
+     { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+	CPPFLAGS="${saved_cppflags}"
+    fi
+
+
+
+    if test "x${PBX_SSL_OP_NO_TLSV1_2}" != "x1"; then
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for SSL_OP_NO_TLSv1_2 in openssl/ssl.h" >&5
+$as_echo_n "checking for SSL_OP_NO_TLSv1_2 in openssl/ssl.h... " >&6; }
+	saved_cppflags="${CPPFLAGS}"
+	if test "x${SSL_OP_NO_TLSV1_2_DIR}" != "x"; then
+	    SSL_OP_NO_TLSV1_2_INCLUDE="-I${SSL_OP_NO_TLSV1_2_DIR}/include"
+	fi
+	CPPFLAGS="${CPPFLAGS} ${SSL_OP_NO_TLSV1_2_INCLUDE}"
+
+	cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+ #include <openssl/ssl.h>
+int
+main ()
+{
+#if defined(SSL_OP_NO_TLSv1_2)
+				int foo = 0;
+			        #else
+			        int foo = bar;
+			        #endif
+				0
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+     { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+		PBX_SSL_OP_NO_TLSV1_2=1
+
+$as_echo "#define HAVE_SSL_OP_NO_TLSV1_2 1" >>confdefs.h
+
+
+
+else
+     { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+	CPPFLAGS="${saved_cppflags}"
+    fi
+
 
 fi
 

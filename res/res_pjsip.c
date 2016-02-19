@@ -42,9 +42,11 @@
 #include "asterisk/res_pjsip_cli.h"
 #include "asterisk/test.h"
 #include "asterisk/res_pjsip_presence_xml.h"
+#include "asterisk/res_pjproject.h"
 
 /*** MODULEINFO
 	<depend>pjproject</depend>
+	<depend>res_pjproject</depend>
 	<depend>res_sorcery_config</depend>
 	<depend>res_sorcery_memory</depend>
 	<depend>res_sorcery_astdb</depend>
@@ -231,6 +233,14 @@
 						Be aware that the <literal>external_media_address</literal> option, set in Transport
 						configuration, can also affect the final media address used in the SDP.
 					</para></note>
+					</description>
+				</configOption>
+				<configOption name="bind_rtp_to_media_address">
+					<synopsis>Bind the RTP instance to the media_address</synopsis>
+					<description><para>
+						If media_address is specified, this option causes the RTP instance to be bound to the
+						specified ip address which causes the packets to be sent from that address.
+					</para>
 					</description>
 				</configOption>
 				<configOption name="force_rport" default="yes">
@@ -1274,6 +1284,10 @@
 				<configOption name="user_agent" default="Asterisk &lt;Asterisk Version&gt;">
 					<synopsis>Value used in User-Agent header for SIP requests and Server header for SIP responses.</synopsis>
 				</configOption>
+				<configOption name="regcontext" default="">
+                                        <synopsis>When set, Asterisk will dynamically create and destroy a NoOp priority 1 extension for a given
+					peer who registers or unregisters with us.</synopsis>
+                                </configOption>
 				<configOption name="default_outbound_endpoint" default="default_outbound_endpoint">
 					<synopsis>Endpoint to use when sending an outbound request to a URI without a specified endpoint.</synopsis>
 				</configOption>
@@ -2204,6 +2218,57 @@ struct ast_sip_endpoint *ast_sip_identify_endpoint(pjsip_rx_data *rdata)
 	return endpoint;
 }
 
+static int do_cli_dump_endpt(void *v_a)
+{
+	struct ast_cli_args *a = v_a;
+
+	ast_pjproject_log_intercept_begin(a->fd);
+	pjsip_endpt_dump(ast_sip_get_pjsip_endpoint(), a->argc == 4 ? PJ_TRUE : PJ_FALSE);
+	ast_pjproject_log_intercept_end();
+
+	return 0;
+}
+
+static char *cli_dump_endpt(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+	switch (cmd) {
+	case CLI_INIT:
+#ifdef AST_DEVMODE
+		e->command = "pjsip dump endpt [details]";
+		e->usage =
+			"Usage: pjsip dump endpt [details]\n"
+			"       Dump the res_pjsip endpt internals.\n"
+			"\n"
+			"Warning: PJPROJECT documents that the function used by this\n"
+			"CLI command may cause a crash when asking for details because\n"
+			"it tries to access all active memory pools.\n";
+#else
+		/*
+		 * In non-developer mode we will not document or make easily accessible
+		 * the details option even though it is still available.  The user has
+		 * to know it exists to use it.  Presumably they would also be aware of
+		 * the potential crash warning.
+		 */
+		e->command = "pjsip dump endpt";
+		e->usage =
+			"Usage: pjsip dump endpt\n"
+			"       Dump the res_pjsip endpt internals.\n";
+#endif /* AST_DEVMODE */
+		return NULL;
+	case CLI_GENERATE:
+		return NULL;
+	}
+
+	if (4 < a->argc
+		|| (a->argc == 4 && strcasecmp(a->argv[3], "details"))) {
+		return CLI_SHOWUSAGE;
+	}
+
+	ast_sip_push_task_synchronous(NULL, do_cli_dump_endpt, a);
+
+	return CLI_SUCCESS;
+}
+
 static char *cli_show_endpoint_identifiers(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
 #define ENDPOINT_IDENTIFIER_FORMAT "%-20.20s\n"
@@ -2267,8 +2332,9 @@ static char *cli_show_settings(struct ast_cli_entry *e, int cmd, struct ast_cli_
 }
 
 static struct ast_cli_entry cli_commands[] = {
-        AST_CLI_DEFINE(cli_show_settings, "Show global and system configuration options"),
-        AST_CLI_DEFINE(cli_show_endpoint_identifiers, "List registered endpoint identifiers")
+	AST_CLI_DEFINE(cli_dump_endpt, "Dump the res_pjsip endpt internals"),
+	AST_CLI_DEFINE(cli_show_settings, "Show global and system configuration options"),
+	AST_CLI_DEFINE(cli_show_endpoint_identifiers, "List registered endpoint identifiers")
 };
 
 AST_RWLIST_HEAD_STATIC(endpoint_formatters, ast_sip_endpoint_formatter);
@@ -2416,6 +2482,7 @@ static int sip_dialog_create_from(pj_pool_t *pool, pj_str_t *from, const char *u
 static int sip_get_tpselector_from_endpoint(const struct ast_sip_endpoint *endpoint, pjsip_tpselector *selector)
 {
 	RAII_VAR(struct ast_sip_transport *, transport, NULL, ao2_cleanup);
+	RAII_VAR(struct ast_sip_transport_state *, transport_state, NULL, ao2_cleanup);
 	const char *transport_name = endpoint->transport;
 
 	if (ast_strlen_zero(transport_name)) {
@@ -2423,19 +2490,20 @@ static int sip_get_tpselector_from_endpoint(const struct ast_sip_endpoint *endpo
 	}
 
 	transport = ast_sorcery_retrieve_by_id(ast_sip_get_sorcery(), "transport", transport_name);
+	transport_state = ast_sip_get_transport_state(transport_name);
 
-	if (!transport || !transport->state) {
+	if (!transport || !transport_state) {
 		ast_log(LOG_ERROR, "Unable to retrieve PJSIP transport '%s' for endpoint '%s'\n",
 			transport_name, ast_sorcery_object_get_id(endpoint));
 		return -1;
 	}
 
-	if (transport->state->transport) {
+	if (transport_state->transport) {
 		selector->type = PJSIP_TPSELECTOR_TRANSPORT;
-		selector->u.transport = transport->state->transport;
-	} else if (transport->state->factory) {
+		selector->u.transport = transport_state->transport;
+	} else if (transport_state->factory) {
 		selector->type = PJSIP_TPSELECTOR_LISTENER;
-		selector->u.listener = transport->state->factory;
+		selector->u.listener = transport_state->factory;
 	} else if (transport->type == AST_TRANSPORT_WS || transport->type == AST_TRANSPORT_WSS) {
 		/* The WebSocket transport has no factory as it can not create outgoing connections, so
 		 * even if an endpoint is locked to a WebSocket transport we let the PJSIP logic
@@ -2643,7 +2711,11 @@ pjsip_dialog *ast_sip_create_dialog_uas(const struct ast_sip_endpoint *endpoint,
 			(type != PJSIP_TRANSPORT_UDP && type != PJSIP_TRANSPORT_UDP6) ? ";transport=" : "",
 			(type != PJSIP_TRANSPORT_UDP && type != PJSIP_TRANSPORT_UDP6) ? pjsip_transport_get_type_name(type) : "");
 
+#ifdef HAVE_PJSIP_DLG_CREATE_UAS_AND_INC_LOCK
+	*status = pjsip_dlg_create_uas_and_inc_lock(pjsip_ua_instance(), rdata, &contact, &dlg);
+#else
 	*status = pjsip_dlg_create_uas(pjsip_ua_instance(), rdata, &contact, &dlg);
+#endif
 	if (*status != PJ_SUCCESS) {
 		char err[PJ_ERR_MSG_SIZE];
 
@@ -2656,6 +2728,9 @@ pjsip_dialog *ast_sip_create_dialog_uas(const struct ast_sip_endpoint *endpoint,
 	dlg->sess_count++;
 	pjsip_dlg_set_transport(dlg, &selector);
 	dlg->sess_count--;
+#ifdef HAVE_PJSIP_DLG_CREATE_UAS_AND_INC_LOCK
+	pjsip_dlg_dec_lock(dlg);
+#endif
 
 	return dlg;
 }
@@ -3433,23 +3508,14 @@ int ast_sip_append_body(pjsip_tx_data *tdata, const char *body_text)
 	return 0;
 }
 
-struct ast_taskprocessor *ast_sip_create_serializer_group(struct ast_serializer_shutdown_group *shutdown_group)
+struct ast_taskprocessor *ast_sip_create_serializer_group(const char *name, struct ast_serializer_shutdown_group *shutdown_group)
 {
-	struct ast_taskprocessor *serializer;
-	char name[AST_UUID_STR_LEN];
-
-	ast_uuid_generate_str(name, sizeof(name));
-
-	serializer = ast_threadpool_serializer_group(name, sip_threadpool, shutdown_group);
-	if (!serializer) {
-		return NULL;
-	}
-	return serializer;
+	return ast_threadpool_serializer_group(name, sip_threadpool, shutdown_group);
 }
 
-struct ast_taskprocessor *ast_sip_create_serializer(void)
+struct ast_taskprocessor *ast_sip_create_serializer(const char *name)
 {
-	return ast_sip_create_serializer_group(NULL);
+	return ast_sip_create_serializer_group(name, NULL);
 }
 
 /*!
@@ -3479,10 +3545,14 @@ static void serializer_pool_shutdown(void)
  */
 static int serializer_pool_setup(void)
 {
+	char tps_name[AST_TASKPROCESSOR_MAX_NAME + 1];
 	int idx;
 
 	for (idx = 0; idx < SERIALIZER_POOL_SIZE; ++idx) {
-		serializer_pool[idx] = ast_sip_create_serializer();
+		/* Create name with seq number appended. */
+		ast_taskprocessor_build_name(tps_name, sizeof(tps_name), "pjsip/default");
+
+		serializer_pool[idx] = ast_sip_create_serializer(tps_name);
 		if (!serializer_pool[idx]) {
 			serializer_pool_shutdown();
 			return -1;
@@ -3879,29 +3949,54 @@ static int reload_configuration_task(void *obj)
 	return 0;
 }
 
-static int load_module(void)
+static int unload_pjsip(void *data)
 {
+	/*
+	 * These calls need the pjsip endpoint and serializer to clean up.
+	 * If they're not set, then there's nothing to clean up anyway.
+	 */
+	if (ast_pjsip_endpoint && serializer_pool[0]) {
+		ast_res_pjsip_cleanup_options_handling();
+		ast_sip_destroy_distributor();
+		ast_res_pjsip_destroy_configuration();
+		ast_sip_destroy_system();
+		ast_sip_destroy_global_headers();
+		internal_sip_unregister_service(&supplement_module);
+	}
+
+	if (monitor_thread) {
+		stop_monitor_thread();
+		monitor_thread = NULL;
+	}
+
+	if (memory_pool) {
+		pj_pool_release(memory_pool);
+		memory_pool = NULL;
+	}
+
+	ast_pjsip_endpoint = NULL;
+
+	if (caching_pool.lock) {
+		pj_caching_pool_destroy(&caching_pool);
+	}
+
+	pj_shutdown();
+
+	return 0;
+}
+
+static int load_pjsip(void)
+{
+	pj_status_t status;
+
 	/* The third parameter is just copied from
 	 * example code from PJLIB. This can be adjusted
 	 * if necessary.
 	 */
-	pj_status_t status;
-	struct ast_threadpool_options options;
-
-	if (pj_init() != PJ_SUCCESS) {
-		return AST_MODULE_LOAD_DECLINE;
-	}
-
-	if (pjlib_util_init() != PJ_SUCCESS) {
-		pj_shutdown();
-		return AST_MODULE_LOAD_DECLINE;
-	}
-
 	pj_caching_pool_init(&caching_pool, NULL, 1024 * 1024);
 	if (pjsip_endpt_create(&caching_pool.factory, "SIP", &ast_pjsip_endpoint) != PJ_SUCCESS) {
 		ast_log(LOG_ERROR, "Failed to create PJSIP endpoint structure. Aborting load\n");
-		pj_caching_pool_destroy(&caching_pool);
-		return AST_MODULE_LOAD_DECLINE;
+		goto error;
 	}
 
 	/* PJSIP will automatically try to add a Max-Forwards header. Since we want to control that,
@@ -3912,10 +4007,7 @@ static int load_module(void)
 	memory_pool = pj_pool_create(&caching_pool.factory, "SIP", 1024, 1024, NULL);
 	if (!memory_pool) {
 		ast_log(LOG_ERROR, "Failed to create memory pool for SIP. Aborting load\n");
-		pjsip_endpt_destroy(ast_pjsip_endpoint);
-		ast_pjsip_endpoint = NULL;
-		pj_caching_pool_destroy(&caching_pool);
-		return AST_MODULE_LOAD_DECLINE;
+		goto error;
 	}
 
 	if (!pj_gethostip(pj_AF_INET(), &host_ip_ipv4)) {
@@ -3928,42 +4020,6 @@ static int load_module(void)
 		ast_verb(3, "Local IPv6 address determined to be: %s\n", host_ip_ipv6_string);
 	}
 
-	if (ast_sip_initialize_system()) {
-		ast_log(LOG_ERROR, "Failed to initialize SIP 'system' configuration section. Aborting load\n");
-		pj_pool_release(memory_pool);
-		memory_pool = NULL;
-		pjsip_endpt_destroy(ast_pjsip_endpoint);
-		ast_pjsip_endpoint = NULL;
-		pj_caching_pool_destroy(&caching_pool);
-		return AST_MODULE_LOAD_DECLINE;
-	}
-
-	sip_get_threadpool_options(&options);
-	options.thread_start = sip_thread_start;
-	sip_threadpool = ast_threadpool_create("SIP", NULL, &options);
-	if (!sip_threadpool) {
-		ast_log(LOG_ERROR, "Failed to create SIP threadpool. Aborting load\n");
-		ast_sip_destroy_system();
-		pj_pool_release(memory_pool);
-		memory_pool = NULL;
-		pjsip_endpt_destroy(ast_pjsip_endpoint);
-		ast_pjsip_endpoint = NULL;
-		pj_caching_pool_destroy(&caching_pool);
-		return AST_MODULE_LOAD_DECLINE;
-	}
-
-	if (serializer_pool_setup()) {
-		ast_log(LOG_ERROR, "Failed to create SIP serializer pool. Aborting load\n");
-		ast_threadpool_shutdown(sip_threadpool);
-		ast_sip_destroy_system();
-		pj_pool_release(memory_pool);
-		memory_pool = NULL;
-		pjsip_endpt_destroy(ast_pjsip_endpoint);
-		ast_pjsip_endpoint = NULL;
-		pj_caching_pool_destroy(&caching_pool);
-		return AST_MODULE_LOAD_DECLINE;
-	}
-
 	pjsip_tsx_layer_init_module(ast_pjsip_endpoint);
 	pjsip_ua_init_module(ast_pjsip_endpoint, NULL);
 
@@ -3972,28 +4028,61 @@ static int load_module(void)
 			NULL, PJ_THREAD_DEFAULT_STACK_SIZE * 2, 0, &monitor_thread);
 	if (status != PJ_SUCCESS) {
 		ast_log(LOG_ERROR, "Failed to start SIP monitor thread. Aborting load\n");
-		ast_sip_destroy_system();
-		pj_pool_release(memory_pool);
-		memory_pool = NULL;
-		pjsip_endpt_destroy(ast_pjsip_endpoint);
-		ast_pjsip_endpoint = NULL;
-		pj_caching_pool_destroy(&caching_pool);
+		goto error;
+	}
+
+	return AST_MODULE_LOAD_SUCCESS;
+
+error:
+	unload_pjsip(NULL);
+	return AST_MODULE_LOAD_DECLINE;
+}
+
+static int load_module(void)
+{
+	struct ast_threadpool_options options;
+
+	CHECK_PJPROJECT_MODULE_LOADED();
+
+	/* pjproject and config_system need to be initialized before all else */
+	if (pj_init() != PJ_SUCCESS) {
 		return AST_MODULE_LOAD_DECLINE;
 	}
+
+	if (pjlib_util_init() != PJ_SUCCESS) {
+		goto error;
+	}
+
+	if (ast_sip_initialize_system()) {
+		ast_log(LOG_ERROR, "Failed to initialize SIP 'system' configuration section. Aborting load\n");
+		goto error;
+	}
+
+	/* The serializer needs threadpool and threadpool needs pjproject to be initialized so it's next */
+	sip_get_threadpool_options(&options);
+	options.thread_start = sip_thread_start;
+	sip_threadpool = ast_threadpool_create("SIP", NULL, &options);
+	if (!sip_threadpool) {
+		goto error;
+	}
+
+	if (serializer_pool_setup()) {
+		ast_log(LOG_ERROR, "Failed to create SIP serializer pool. Aborting load\n");
+		goto error;
+	}
+
+	/* Now load all the pjproject infrastructure. */
+	if (load_pjsip()) {
+		goto error;
+	}
+
+	ast_sip_initialize_dns();
 
 	ast_sip_initialize_global_headers();
 
 	if (ast_res_pjsip_initialize_configuration()) {
 		ast_log(LOG_ERROR, "Failed to initialize SIP configuration. Aborting load\n");
-		ast_sip_destroy_global_headers();
-		stop_monitor_thread();
-		ast_sip_destroy_system();
-		pj_pool_release(memory_pool);
-		memory_pool = NULL;
-		pjsip_endpt_destroy(ast_pjsip_endpoint);
-		ast_pjsip_endpoint = NULL;
-		pj_caching_pool_destroy(&caching_pool);
-		return AST_MODULE_LOAD_DECLINE;
+		goto error;
 	}
 
 	ast_sip_initialize_resolver();
@@ -4001,31 +4090,12 @@ static int load_module(void)
 
 	if (ast_sip_initialize_distributor()) {
 		ast_log(LOG_ERROR, "Failed to register distributor module. Aborting load\n");
-		ast_res_pjsip_destroy_configuration();
-		ast_sip_destroy_global_headers();
-		stop_monitor_thread();
-		ast_sip_destroy_system();
-		pj_pool_release(memory_pool);
-		memory_pool = NULL;
-		pjsip_endpt_destroy(ast_pjsip_endpoint);
-		ast_pjsip_endpoint = NULL;
-		pj_caching_pool_destroy(&caching_pool);
-		return AST_MODULE_LOAD_DECLINE;
+		goto error;
 	}
 
 	if (internal_sip_register_service(&supplement_module)) {
 		ast_log(LOG_ERROR, "Failed to initialize supplement hooks. Aborting load\n");
-		ast_sip_destroy_distributor();
-		ast_res_pjsip_destroy_configuration();
-		ast_sip_destroy_global_headers();
-		stop_monitor_thread();
-		ast_sip_destroy_system();
-		pj_pool_release(memory_pool);
-		memory_pool = NULL;
-		pjsip_endpt_destroy(ast_pjsip_endpoint);
-		ast_pjsip_endpoint = NULL;
-		pj_caching_pool_destroy(&caching_pool);
-		return AST_MODULE_LOAD_DECLINE;
+		goto error;
 	}
 
 	ast_res_pjsip_init_options_handling(0);
@@ -4034,7 +4104,17 @@ static int load_module(void)
 	AST_TEST_REGISTER(xml_sanitization_end_null);
 	AST_TEST_REGISTER(xml_sanitization_exceeds_buffer);
 
+	ast_pjproject_ref();
+
 	return AST_MODULE_LOAD_SUCCESS;
+
+error:
+	/* These functions all check for NULLs and are safe to call at any time */
+	unload_pjsip(NULL);
+	serializer_pool_shutdown();
+	ast_threadpool_shutdown(sip_threadpool);
+
+	return AST_MODULE_LOAD_DECLINE;
 }
 
 static int reload_module(void)
@@ -4051,32 +4131,11 @@ static int reload_module(void)
 	return 0;
 }
 
-static int unload_pjsip(void *data)
-{
-	ast_cli_unregister_multiple(cli_commands, ARRAY_LEN(cli_commands));
-	ast_res_pjsip_cleanup_options_handling();
-	ast_sip_destroy_distributor();
-	ast_res_pjsip_destroy_configuration();
-	ast_sip_destroy_system();
-	ast_sip_destroy_global_headers();
-	internal_sip_unregister_service(&supplement_module);
-	if (monitor_thread) {
-		stop_monitor_thread();
-	}
-	if (memory_pool) {
-		pj_pool_release(memory_pool);
-		memory_pool = NULL;
-	}
-	ast_pjsip_endpoint = NULL;
-	pj_caching_pool_destroy(&caching_pool);
-	pj_shutdown();
-	return 0;
-}
-
 static int unload_module(void)
 {
 	AST_TEST_UNREGISTER(xml_sanitization_end_null);
 	AST_TEST_UNREGISTER(xml_sanitization_exceeds_buffer);
+	ast_cli_unregister_multiple(cli_commands, ARRAY_LEN(cli_commands));
 
 	/* The thread this is called from cannot call PJSIP/PJLIB functions,
 	 * so we have to push the work to the threadpool to handle
@@ -4086,7 +4145,8 @@ static int unload_module(void)
 	serializer_pool_shutdown();
 	ast_threadpool_shutdown(sip_threadpool);
 
-	ast_sip_destroy_cli();
+	ast_pjproject_unref();
+
 	return 0;
 }
 
